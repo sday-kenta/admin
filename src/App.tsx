@@ -14,7 +14,7 @@ type User = {
   house: string
   apartment: string
   is_blocked: boolean
-  is_admin: boolean
+  role: string
   created_at: string
   updated_at: string
 }
@@ -32,7 +32,7 @@ type UserForm = {
   house: string
   apartment: string
   is_blocked: boolean
-  is_admin: boolean
+  role: string
 }
 
 type Category = {
@@ -60,6 +60,8 @@ function App() {
   const [isSaving, setIsSaving] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [userToDelete, setUserToDelete] = useState<User | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [userForm, setUserForm] = useState<UserForm>({
     login: '',
     email: '',
@@ -73,7 +75,7 @@ function App() {
     house: '',
     apartment: '',
     is_blocked: false,
-    is_admin: false,
+    role: 'user',
   })
 
   useEffect(() => {
@@ -97,17 +99,30 @@ function App() {
     fetchUsers()
   }, [])
 
-  const handleDeleteUser = async (id: number) => {
-    if (!window.confirm('Удалить пользователя?')) return
+  const requestDeleteUser = (user: User) => {
+    setUserToDelete(user)
+  }
+
+  const cancelDeleteUser = () => {
+    setUserToDelete(null)
+    setIsDeleting(false)
+  }
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return
 
     try {
-      const res = await fetch(`${API_URL}/v1/users/${id}`, { method: 'DELETE' })
+      setIsDeleting(true)
+      const res = await fetch(`${API_URL}/v1/users/${userToDelete.id}`, { method: 'DELETE' })
       if (!res.ok) {
         throw new Error('Не удалось удалить пользователя')
       }
-      setUsers((prev) => prev.filter((u) => u.id !== id))
+      setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id))
+      setUserToDelete(null)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Ошибка удаления')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -134,7 +149,7 @@ function App() {
       house: '',
       apartment: '',
       is_blocked: false,
-      is_admin: false,
+      role: 'user',
     })
   }
 
@@ -155,7 +170,7 @@ function App() {
       house: user.house,
       apartment: user.apartment,
       is_blocked: user.is_blocked,
-      is_admin: user.is_admin,
+      role: user.role,
     })
   }
 
@@ -222,7 +237,7 @@ function App() {
             house: userForm.house,
             apartment: userForm.apartment,
             is_blocked: userForm.is_blocked,
-            is_admin: userForm.is_admin,
+            role: userForm.role,
           }),
         })
 
@@ -249,7 +264,7 @@ function App() {
             house: userForm.house,
             apartment: userForm.apartment,
             is_blocked: userForm.is_blocked,
-            is_admin: userForm.is_admin,
+            role: userForm.role,
           }),
         })
 
@@ -348,6 +363,43 @@ function App() {
                   </button>
                 </div>
               </div>
+              {userToDelete && (
+                <div className="mb-4 rounded-xl border border-rose-100 bg-rose-50/80 px-4 py-3 text-[11px] text-rose-800">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold">
+                        Удалить пользователя #{userToDelete.id} ({userToDelete.login})?
+                      </p>
+                      <p className="text-[11px] text-rose-700">
+                        Действие необратимо. Все данные пользователя будут удалены.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cancelDeleteUser}
+                      className="rounded-md px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
+                    >
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={confirmDeleteUser}
+                      disabled={isDeleting}
+                      className="inline-flex h-7 items-center justify-center rounded-md bg-rose-600 px-3 text-[11px] font-medium text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isDeleting ? 'Удаление...' : 'Да, удалить'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelDeleteUser}
+                      className="inline-flex h-7 items-center justify-center rounded-md border border-rose-200 px-3 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
+                    >
+                      Отменить
+                    </button>
+                  </div>
+                </div>
+              )}
               {(isCreating || editingUser) && (
                 <div className="mb-4 rounded-xl border border-slate-100 bg-slate-50/60 p-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
@@ -475,14 +527,17 @@ function App() {
                       />
                     </label>
                     <div className="flex flex-col justify-end gap-2 text-[11px] text-slate-600">
-                      <label className="inline-flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={userForm.is_admin}
-                          onChange={(e) => handleFormChange('is_admin', e.target.checked)}
-                          className="h-3 w-3 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
-                        />
-                        Администратор
+                      <label className="flex flex-col gap-1">
+                        Роль
+                        <select
+                          value={userForm.role}
+                          onChange={(e) => handleFormChange('role', e.target.value)}
+                          className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        >
+                          <option value="user">Пользователь</option>
+                          <option value="admin">Премиум</option>
+                          <option value="premium">Админ</option>
+                        </select>
                       </label>
                       <label className="inline-flex items-center gap-2">
                         <input
@@ -531,7 +586,11 @@ function App() {
                           <td className="px-3 py-2">{user.email}</td>
                           <td className="px-3 py-2">
                             <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium capitalize text-slate-700">
-                              {user.is_admin ? 'Админ' : 'Пользователь'}
+                              {user.role === 'admin'
+                                ? 'Админ'
+                                : user.role === 'premium'
+                                  ? 'Премиум'
+                                  : 'Пользователь'}
                             </span>
                           </td>
                           <td className="px-3 py-2">
@@ -557,7 +616,7 @@ function App() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleDeleteUser(user.id)}
+                                onClick={() => requestDeleteUser(user)}
                                 className="rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50"
                               >
                                 Удалить
