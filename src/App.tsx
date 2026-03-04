@@ -37,23 +37,24 @@ type UserForm = {
 
 type Category = {
   id: number
-  name: string
-  slug: string
-  isPublished: boolean
+  title: string
+  icon_url?: string
 }
 
-const categories: Category[] = [
-  { id: 1, name: 'Парковки', slug: 'parkings', isPublished: true },
-  { id: 2, name: 'Просроченные продукты', slug: 'expired-products', isPublished: false },
-]
+type CategoryForm = {
+  title: string
+  icon_url: string
+}
 
 type View = 'users' | 'categories'
 
-const API_URL = 'http://localhost:8080'
+// При dev-запуске ходим на тот же origin (Vite-прокси отправит на бэкенд).
+const API_URL = ''
 
 function App() {
   const [view, setView] = useState<View>('users')
   const [users, setUsers] = useState<User[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
@@ -62,6 +63,16 @@ function App() {
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [userToDelete, setUserToDelete] = useState<User | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isSavingCategory, setIsSavingCategory] = useState(false)
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null)
+  const [isDeletingCategory, setIsDeletingCategory] = useState(false)
+  const [categoryError, setCategoryError] = useState<string | null>(null)
+  const [categoryForm, setCategoryForm] = useState<CategoryForm>({
+    title: '',
+    icon_url: '',
+  })
   const [userForm, setUserForm] = useState<UserForm>({
     login: '',
     email: '',
@@ -96,7 +107,25 @@ function App() {
       }
     }
 
+    const fetchCategories = async () => {
+      try {
+        setCategoryError(null)
+        const res = await fetch(`${API_URL}/v1/categories`)
+        if (!res.ok) {
+          throw new Error(`Ошибка загрузки рубрик: ${res.status}`)
+        }
+        const raw = (await res.json()) as Category[] | { data?: Category[] }
+        const list = Array.isArray(raw) ? raw : raw.data || []
+        setCategories(list)
+      } catch (err) {
+        setCategoryError(
+          err instanceof Error ? err.message : 'Не удалось загрузить рубрики',
+        )
+      }
+    }
+
     fetchUsers()
+    fetchCategories()
   }, [])
 
   const requestDeleteUser = (user: User) => {
@@ -123,6 +152,38 @@ function App() {
       alert(err instanceof Error ? err.message : 'Ошибка удаления')
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const requestDeleteCategory = (category: Category) => {
+    setCategoryToDelete(category)
+  }
+
+  const cancelDeleteCategory = () => {
+    setCategoryToDelete(null)
+    setIsDeletingCategory(false)
+  }
+
+  const confirmDeleteCategory = async () => {
+    if (!categoryToDelete) return
+
+    try {
+      setIsDeletingCategory(true)
+      const res = await fetch(`${API_URL}/v1/categories/${categoryToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'X-User-Role': 'admin',
+        },
+      })
+      if (!res.ok) {
+        throw new Error('Не удалось удалить рубрику')
+      }
+      setCategories((prev) => prev.filter((c) => c.id !== categoryToDelete.id))
+      setCategoryToDelete(null)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Ошибка удаления рубрики')
+    } finally {
+      setIsDeletingCategory(false)
     }
   }
 
@@ -193,6 +254,47 @@ function App() {
 
   const handleFormChange = (field: keyof UserForm, value: string | boolean) => {
     setUserForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+  }
+
+  // ----- Рубрики -----
+
+  const startCreateCategory = () => {
+    if (isCreatingCategory) {
+      cancelEditCategory()
+      return
+    }
+
+    setEditingCategory(null)
+    setIsCreatingCategory(true)
+    setFormError(null)
+    setCategoryForm({
+      title: '',
+      icon_url: '',
+    })
+  }
+
+  const startEditCategory = (category: Category) => {
+    setIsCreatingCategory(false)
+    setEditingCategory(category)
+    setFormError(null)
+    setCategoryForm({
+      title: category.title,
+      icon_url: category.icon_url ?? '',
+    })
+  }
+
+  const cancelEditCategory = () => {
+    setEditingCategory(null)
+    setIsCreatingCategory(false)
+    setFormError(null)
+    setIsSavingCategory(false)
+  }
+
+  const handleCategoryFormChange = (field: keyof CategoryForm, value: string) => {
+    setCategoryForm((prev) => ({
       ...prev,
       [field]: value,
     }))
@@ -280,6 +382,68 @@ function App() {
       setFormError(err instanceof Error ? err.message : 'Ошибка сохранения')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleSubmitCategory = async (event: FormEvent) => {
+    event.preventDefault()
+    setFormError(null)
+
+    if (!categoryForm.title.trim()) {
+      setFormError('Нужно указать название рубрики')
+      return
+    }
+
+    try {
+      setIsSavingCategory(true)
+
+      if (isCreatingCategory) {
+        const res = await fetch(`${API_URL}/v1/categories`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Role': 'admin',
+          },
+          body: JSON.stringify({
+            title: categoryForm.title.trim(),
+            icon_url: categoryForm.icon_url.trim() || undefined,
+          }),
+        })
+
+        if (!res.ok) {
+          throw new Error('Не удалось создать рубрику')
+        }
+
+        const raw = (await res.json()) as Category | { data?: Category }
+        const created = 'data' in raw && raw.data ? raw.data : (raw as Category)
+        setCategories((prev) => [...prev, created])
+        cancelEditCategory()
+      } else if (editingCategory) {
+        const res = await fetch(`${API_URL}/v1/categories/${editingCategory.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Role': 'admin',
+          },
+          body: JSON.stringify({
+            title: categoryForm.title.trim(),
+            icon_url: categoryForm.icon_url.trim() || undefined,
+          }),
+        })
+
+        if (!res.ok) {
+          throw new Error('Не удалось обновить рубрику')
+        }
+
+        const raw = (await res.json()) as Category | { data?: Category }
+        const updated = 'data' in raw && raw.data ? raw.data : (raw as Category)
+        setCategories((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+        cancelEditCategory()
+      }
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Ошибка сохранения рубрики')
+    } finally {
+      setIsSavingCategory(false)
     }
   }
 
@@ -535,8 +699,8 @@ function App() {
                           className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
                         >
                           <option value="user">Пользователь</option>
-                          <option value="admin">Премиум</option>
-                          <option value="premium">Админ</option>
+                          <option value="admin">Админ</option>
+                          <option value="premium">Премиум</option>
                         </select>
                       </label>
                       <label className="inline-flex items-center gap-2">
@@ -645,78 +809,197 @@ function App() {
             </section>
           ) : (
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-slate-900">
-                  Рубрики
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Управление рубриками/категориями контента
-                </p>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">
+                    Рубрики
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Управление рубриками/категориями контента
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {categoryError && (
+                    <span className="text-[11px] text-rose-500">
+                      Ошибка: {categoryError}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={startCreateCategory}
+                    className="h-8 items-center rounded-lg bg-slate-900 px-3 text-xs font-medium text-white shadow-sm hover:bg-slate-800 inline-flex"
+                  >
+                    + Добавить
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Поиск..."
-                  className="h-8 w-32 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 sm:w-40"
-                />
-                <button className="hidden h-8 items-center rounded-lg bg-slate-900 px-3 text-xs font-medium text-white shadow-sm hover:bg-slate-800 sm:inline-flex">
-                  + Добавить
-                </button>
-              </div>
-            </div>
-            <div className="overflow-hidden rounded-xl border border-slate-100">
-              <div className="max-h-[360px] overflow-auto">
-                <table className="min-w-full border-collapse text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">ID</th>
-                      <th className="px-3 py-2 font-medium">Название</th>
-                      <th className="px-3 py-2 font-medium">Slug</th>
-                      <th className="px-3 py-2 font-medium">Статус</th>
-                      <th className="px-3 py-2 text-right font-medium">Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-                    {categories.map((category) => (
-                      <tr key={category.id} className="hover:bg-slate-50/70">
-                        <td className="px-3 py-2">{category.id}</td>
-                        <td className="px-3 py-2">{category.name}</td>
-                        <td className="px-3 py-2 text-slate-500">
-                          {category.slug}
-                        </td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={
-                              'inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ' +
-                              (category.isPublished
-                                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
-                                : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200')
-                            }
-                          >
-                            {category.isPublished ? 'Опубликована' : 'Черновик'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <div className="flex justify-end gap-1">
-                            <button className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100">
-                              Редактировать
-                            </button>
-                            <button className="rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50">
-                              Удалить
-                            </button>
-                          </div>
-                        </td>
+              {(isCreatingCategory || editingCategory) && (
+                <div className="mb-4 rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {isCreatingCategory ? 'Создание рубрики' : 'Редактирование рубрики'}
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Поля с * обязательны для заполнения
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cancelEditCategory}
+                      className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-100"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                  {formError && (
+                    <div className="mb-3 rounded-md bg-rose-50 px-3 py-2 text-[11px] text-rose-600">
+                      {formError}
+                    </div>
+                  )}
+                  <form
+                    onSubmit={handleSubmitCategory}
+                    className="grid grid-cols-1 gap-3 md:grid-cols-3"
+                  >
+                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
+                      Название *
+                      <input
+                        type="text"
+                        value={categoryForm.title}
+                        onChange={(e) =>
+                          handleCategoryFormChange('title', e.target.value)
+                        }
+                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
+                      URL иконки
+                      <input
+                        type="text"
+                        value={categoryForm.icon_url}
+                        onChange={(e) =>
+                          handleCategoryFormChange('icon_url', e.target.value)
+                        }
+                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                      />
+                    </label>
+                    <div className="flex items-end gap-2">
+                      <button
+                        type="submit"
+                        disabled={isSavingCategory}
+                        className="inline-flex h-8 items-center justify-center rounded-lg bg-slate-900 px-4 text-xs font-medium text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isSavingCategory
+                          ? 'Сохранение...'
+                          : isCreatingCategory
+                            ? 'Создать рубрику'
+                            : 'Сохранить изменения'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+              {categoryToDelete && (
+                <div className="mb-4 rounded-xl border border-rose-100 bg-rose-50/80 px-4 py-3 text-[11px] text-rose-800">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold">
+                        Удалить рубрику #{categoryToDelete.id} ({categoryToDelete.title})?
+                      </p>
+                      <p className="text-[11px] text-rose-700">
+                        Действие необратимо. Рубрика исчезнет из списка.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cancelDeleteCategory}
+                      className="rounded-md px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={confirmDeleteCategory}
+                      disabled={isDeletingCategory}
+                      className="inline-flex h-7 items-center justify-center rounded-md bg-rose-600 px-3 text-[11px] font-medium text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isDeletingCategory ? 'Удаление...' : 'Да, удалить'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelDeleteCategory}
+                      className="inline-flex h-7 items-center justify-center rounded-md border border-rose-200 px-3 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
+                    >
+                      Отменить
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="overflow-hidden rounded-xl border border-slate-100">
+                <div className="max-h-[360px] overflow-auto">
+                  <table className="min-w-full border-collapse text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">ID</th>
+                        <th className="px-3 py-2 font-medium">Название</th>
+                        <th className="px-3 py-2 font-medium">Иконка</th>
+                        <th className="px-3 py-2 text-right font-medium">Действия</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
+                      {categories.map((category) => (
+                        <tr key={category.id} className="hover:bg-slate-50/70">
+                          <td className="px-3 py-2">{category.id}</td>
+                          <td className="px-3 py-2">{category.title}</td>
+                          <td className="px-3 py-2 text-slate-500">
+                            {category.icon_url ? (
+                              <span className="truncate text-[11px]">
+                                {category.icon_url}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => startEditCategory(category)}
+                                className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                              >
+                                Редактировать
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => requestDeleteCategory(category)}
+                                className="rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50"
+                              >
+                                Удалить
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {categories.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={4}
+                            className="px-3 py-4 text-center text-xs text-slate-400"
+                          >
+                            Рубрики не найдены
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                  <span>Всего: {categories.length}</span>
+                </div>
               </div>
-              <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-                <span>Всего: {categories.length}</span>
-              </div>
-            </div>
-          </section>
+            </section>
           )}
         </section>
       </main>
