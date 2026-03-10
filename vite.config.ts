@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    base: '/admin/',
     server: {
       proxy: {
         // Все запросы с префиксом /v1 проксируем на бэкенд
