@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { Dispatch, FormEvent, SetStateAction } from 'react'
+import { UsersSection } from './components/UsersSection'
+import { CategoriesSection } from './components/CategoriesSection'
 
-type User = {
+export type User = {
   id: number
   login: string
   email: string
@@ -19,7 +21,7 @@ type User = {
   updated_at: string
 }
 
-type UserForm = {
+export type UserForm = {
   login: string
   email: string
   password: string
@@ -35,21 +37,20 @@ type UserForm = {
   role: string
 }
 
-type Category = {
+export type Category = {
   id: number
   title: string
   icon_url?: string
 }
 
-type CategoryForm = {
+export type CategoryForm = {
   title: string
   icon_url: string
 }
 
 type View = 'users' | 'categories'
 
-// При dev-запуске ходим на тот же origin (Vite-прокси отправит на бэкенд).
-const API_URL = ''
+const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '')
 
 function App() {
   const [view, setView] = useState<View>('users')
@@ -344,7 +345,13 @@ function App() {
         })
 
         if (!res.ok) {
-          throw new Error('Не удалось создать пользователя')
+          // Пытаемся вытащить текст ошибки из ответа бэкенда
+          try {
+            const data = (await res.json()) as { message?: string }
+            throw new Error(data.message || 'Не удалось создать пользователя')
+          } catch {
+            throw new Error('Не удалось создать пользователя')
+          }
         }
 
         const created = (await res.json()) as User
@@ -371,7 +378,12 @@ function App() {
         })
 
         if (!res.ok) {
-          throw new Error('Не удалось обновить пользователя')
+          try {
+            const data = (await res.json()) as { message?: string }
+            throw new Error(data.message || 'Не удалось обновить пользователя')
+          } catch {
+            throw new Error('Не удалось обновить пользователя')
+          }
         }
 
         const updated = (await res.json()) as User
@@ -379,7 +391,9 @@ function App() {
         cancelEdit()
       }
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Ошибка сохранения')
+      setFormError(
+        err instanceof Error ? err.message : 'Ошибка сохранения пользователя',
+      )
     } finally {
       setIsSaving(false)
     }
@@ -463,547 +477,99 @@ function App() {
       </header>
 
       <main className="mx-auto flex max-w-6xl gap-6 px-4 py-8">
-        {/* Sidebar */}
-        <aside className="w-44 shrink-0">
-          <nav className="space-y-1 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
-            <p className="mb-1 px-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">
-              Разделы
-            </p>
-            <button
-              type="button"
-              onClick={() => setView('users')}
-              className={
-                'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ' +
-                (view === 'users'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-700 hover:bg-slate-50')
-              }
-            >
-              <span>Пользователи</span>
-              <span className="text-[11px] opacity-75">{users.length}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setView('categories')}
-              className={
-                'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ' +
-                (view === 'categories'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-700 hover:bg-slate-50')
-              }
-            >
-              <span>Рубрики</span>
-              <span className="text-[11px] opacity-75">{categories.length}</span>
-            </button>
-          </nav>
-        </aside>
+        <Sidebar view={view} setView={setView} users={users} categories={categories} />
 
-        {/* Content */}
         <section className="flex-1">
           {view === 'users' ? (
-            <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold text-slate-900">
-                    Пользователи
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Список зарегистрированных пользователей системы
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {isLoading && (
-                    <span className="text-[11px] text-slate-400">Загрузка...</span>
-                  )}
-                  {error && (
-                    <span className="text-[11px] text-rose-500">Ошибка: {error}</span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={startCreateUser}
-                    className="h-8 items-center rounded-lg bg-slate-900 px-3 text-xs font-medium text-white shadow-sm hover:bg-slate-800 inline-flex"
-                  >
-                    + Добавить
-                  </button>
-                </div>
-              </div>
-              {userToDelete && (
-                <div className="mb-4 rounded-xl border border-rose-100 bg-rose-50/80 px-4 py-3 text-[11px] text-rose-800">
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold">
-                        Удалить пользователя #{userToDelete.id} ({userToDelete.login})?
-                      </p>
-                      <p className="text-[11px] text-rose-700">
-                        Действие необратимо. Все данные пользователя будут удалены.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={cancelDeleteUser}
-                      className="rounded-md px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
-                    >
-                    </button>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={confirmDeleteUser}
-                      disabled={isDeleting}
-                      className="inline-flex h-7 items-center justify-center rounded-md bg-rose-600 px-3 text-[11px] font-medium text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isDeleting ? 'Удаление...' : 'Да, удалить'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cancelDeleteUser}
-                      className="inline-flex h-7 items-center justify-center rounded-md border border-rose-200 px-3 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
-                    >
-                      Отменить
-                    </button>
-                  </div>
-                </div>
-              )}
-              {(isCreating || editingUser) && (
-                <div className="mb-4 rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-900">
-                        {isCreating ? 'Создание пользователя' : 'Редактирование пользователя'}
-                      </h3>
-                      <p className="text-[11px] text-slate-500">
-                        Поля с * обязательны для заполнения
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={cancelEdit}
-                      className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-100"
-                    >
-                      Отмена
-                    </button>
-                  </div>
-                  {formError && (
-                    <div className="mb-3 rounded-md bg-rose-50 px-3 py-2 text-[11px] text-rose-600">
-                      {formError}
-                    </div>
-                  )}
-                  <form onSubmit={handleSubmitUser} className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      Логин *
-                      <input
-                        type="text"
-                        value={userForm.login}
-                        onChange={(e) => handleFormChange('login', e.target.value)}
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      Email *
-                      <input
-                        type="email"
-                        value={userForm.email}
-                        onChange={(e) => handleFormChange('email', e.target.value)}
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    {isCreating && (
-                      <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                        Пароль *
-                        <input
-                          type="password"
-                          value={userForm.password}
-                          onChange={(e) => handleFormChange('password', e.target.value)}
-                          className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                        />
-                      </label>
-                    )}
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      Фамилия *
-                      <input
-                        type="text"
-                        value={userForm.last_name}
-                        onChange={(e) => handleFormChange('last_name', e.target.value)}
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      Имя *
-                      <input
-                        type="text"
-                        value={userForm.first_name}
-                        onChange={(e) => handleFormChange('first_name', e.target.value)}
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      Отчество
-                      <input
-                        type="text"
-                        value={userForm.middle_name}
-                        onChange={(e) => handleFormChange('middle_name', e.target.value)}
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      Телефон *
-                      <input
-                        type="tel"
-                        value={userForm.phone}
-                        onChange={(e) => handleFormChange('phone', e.target.value)}
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      Город *
-                      <input
-                        type="text"
-                        value={userForm.city}
-                        onChange={(e) => handleFormChange('city', e.target.value)}
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      Улица *
-                      <input
-                        type="text"
-                        value={userForm.street}
-                        onChange={(e) => handleFormChange('street', e.target.value)}
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      Дом *
-                      <input
-                        type="text"
-                        value={userForm.house}
-                        onChange={(e) => handleFormChange('house', e.target.value)}
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      Квартира
-                      <input
-                        type="text"
-                        value={userForm.apartment}
-                        onChange={(e) => handleFormChange('apartment', e.target.value)}
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    <div className="flex flex-col justify-end gap-2 text-[11px] text-slate-600">
-                      <label className="flex flex-col gap-1">
-                        Роль
-                        <select
-                          value={userForm.role}
-                          onChange={(e) => handleFormChange('role', e.target.value)}
-                          className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                        >
-                          <option value="user">Пользователь</option>
-                          <option value="admin">Админ</option>
-                          <option value="premium">Премиум</option>
-                        </select>
-                      </label>
-                      <label className="inline-flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={userForm.is_blocked}
-                          onChange={(e) => handleFormChange('is_blocked', e.target.checked)}
-                          className="h-3 w-3 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
-                        />
-                        Заблокирован
-                      </label>
-                    </div>
-                    <div className="flex items-end gap-2">
-                      <button
-                        type="submit"
-                        disabled={isSaving}
-                        className="inline-flex h-8 items-center justify-center rounded-lg bg-slate-900 px-4 text-xs font-medium text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isSaving
-                          ? 'Сохранение...'
-                          : isCreating
-                            ? 'Создать пользователя'
-                            : 'Сохранить изменения'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
-              <div className="overflow-hidden rounded-xl border border-slate-100">
-                <div className="max-h-[360px] overflow-auto">
-                  <table className="min-w-full border-collapse text-left text-xs">
-                    <thead className="bg-slate-50 text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2 font-medium">ID</th>
-                        <th className="px-3 py-2 font-medium">Логин</th>
-                        <th className="px-3 py-2 font-medium">Email</th>
-                        <th className="px-3 py-2 font-medium">Роль</th>
-                        <th className="px-3 py-2 font-medium">Статус</th>
-                        <th className="px-3 py-2 text-right font-medium">Действия</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-                      {users.map((user) => (
-                        <tr key={user.id} className="hover:bg-slate-50/70">
-                          <td className="px-3 py-2">{user.id}</td>
-                          <td className="px-3 py-2">{user.login}</td>
-                          <td className="px-3 py-2">{user.email}</td>
-                          <td className="px-3 py-2">
-                            <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium capitalize text-slate-700">
-                              {user.role === 'admin'
-                                ? 'Админ'
-                                : user.role === 'premium'
-                                  ? 'Премиум'
-                                  : 'Пользователь'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={
-                                'inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ' +
-                                (!user.is_blocked
-                                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
-                                  : 'bg-rose-50 text-rose-700 ring-1 ring-rose-100')
-                              }
-                            >
-                              {!user.is_blocked ? 'Активен' : 'Заблокирован'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="flex justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleEditUser(user)}
-                                className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                              >
-                                Редактировать
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => requestDeleteUser(user)}
-                                className="rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50"
-                              >
-                                Удалить
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {!isLoading && users.length === 0 && !error && (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            className="px-3 py-4 text-center text-xs text-slate-400"
-                          >
-                            Пользователи не найдены
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-                  <span>Всего: {users.length}</span>
-                </div>
-              </div>
-            </section>
+            <UsersSection
+              users={users}
+              isLoading={isLoading}
+              error={error}
+              formError={formError}
+              isSaving={isSaving}
+              isCreating={isCreating}
+              editingUser={editingUser}
+              userToDelete={userToDelete}
+              isDeleting={isDeleting}
+              userForm={userForm}
+              onStartCreate={startCreateUser}
+              onCancelEdit={cancelEdit}
+              onEditUser={handleEditUser}
+              onRequestDelete={requestDeleteUser}
+              onCancelDelete={cancelDeleteUser}
+              onConfirmDelete={confirmDeleteUser}
+              onFormChange={handleFormChange}
+              onSubmit={handleSubmitUser}
+            />
           ) : (
-            <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold text-slate-900">
-                    Рубрики
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Управление рубриками/категориями контента
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {categoryError && (
-                    <span className="text-[11px] text-rose-500">
-                      Ошибка: {categoryError}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={startCreateCategory}
-                    className="h-8 items-center rounded-lg bg-slate-900 px-3 text-xs font-medium text-white shadow-sm hover:bg-slate-800 inline-flex"
-                  >
-                    + Добавить
-                  </button>
-                </div>
-              </div>
-              {(isCreatingCategory || editingCategory) && (
-                <div className="mb-4 rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-900">
-                        {isCreatingCategory ? 'Создание рубрики' : 'Редактирование рубрики'}
-                      </h3>
-                      <p className="text-[11px] text-slate-500">
-                        Поля с * обязательны для заполнения
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={cancelEditCategory}
-                      className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-100"
-                    >
-                      Отмена
-                    </button>
-                  </div>
-                  {formError && (
-                    <div className="mb-3 rounded-md bg-rose-50 px-3 py-2 text-[11px] text-rose-600">
-                      {formError}
-                    </div>
-                  )}
-                  <form
-                    onSubmit={handleSubmitCategory}
-                    className="grid grid-cols-1 gap-3 md:grid-cols-3"
-                  >
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      Название *
-                      <input
-                        type="text"
-                        value={categoryForm.title}
-                        onChange={(e) =>
-                          handleCategoryFormChange('title', e.target.value)
-                        }
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      URL иконки
-                      <input
-                        type="text"
-                        value={categoryForm.icon_url}
-                        onChange={(e) =>
-                          handleCategoryFormChange('icon_url', e.target.value)
-                        }
-                        className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      />
-                    </label>
-                    <div className="flex items-end gap-2">
-                      <button
-                        type="submit"
-                        disabled={isSavingCategory}
-                        className="inline-flex h-8 items-center justify-center rounded-lg bg-slate-900 px-4 text-xs font-medium text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isSavingCategory
-                          ? 'Сохранение...'
-                          : isCreatingCategory
-                            ? 'Создать рубрику'
-                            : 'Сохранить изменения'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
-              {categoryToDelete && (
-                <div className="mb-4 rounded-xl border border-rose-100 bg-rose-50/80 px-4 py-3 text-[11px] text-rose-800">
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold">
-                        Удалить рубрику #{categoryToDelete.id} ({categoryToDelete.title})?
-                      </p>
-                      <p className="text-[11px] text-rose-700">
-                        Действие необратимо. Рубрика исчезнет из списка.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={cancelDeleteCategory}
-                      className="rounded-md px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
-                    >
-                      Отмена
-                    </button>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={confirmDeleteCategory}
-                      disabled={isDeletingCategory}
-                      className="inline-flex h-7 items-center justify-center rounded-md bg-rose-600 px-3 text-[11px] font-medium text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isDeletingCategory ? 'Удаление...' : 'Да, удалить'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cancelDeleteCategory}
-                      className="inline-flex h-7 items-center justify-center rounded-md border border-rose-200 px-3 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
-                    >
-                      Отменить
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="overflow-hidden rounded-xl border border-slate-100">
-                <div className="max-h-[360px] overflow-auto">
-                  <table className="min-w-full border-collapse text-left text-xs">
-                    <thead className="bg-slate-50 text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2 font-medium">ID</th>
-                        <th className="px-3 py-2 font-medium">Название</th>
-                        <th className="px-3 py-2 font-medium">Иконка</th>
-                        <th className="px-3 py-2 text-right font-medium">Действия</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-                      {categories.map((category) => (
-                        <tr key={category.id} className="hover:bg-slate-50/70">
-                          <td className="px-3 py-2">{category.id}</td>
-                          <td className="px-3 py-2">{category.title}</td>
-                          <td className="px-3 py-2 text-slate-500">
-                            {category.icon_url ? (
-                              <span className="truncate text-[11px]">
-                                {category.icon_url}
-                              </span>
-                            ) : (
-                              <span className="text-[11px] text-slate-400">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="flex justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={() => startEditCategory(category)}
-                                className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                              >
-                                Редактировать
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => requestDeleteCategory(category)}
-                                className="rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50"
-                              >
-                                Удалить
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {categories.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={4}
-                            className="px-3 py-4 text-center text-xs text-slate-400"
-                          >
-                            Рубрики не найдены
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-                  <span>Всего: {categories.length}</span>
-                </div>
-              </div>
-            </section>
+            <CategoriesSection
+              categories={categories}
+              categoryError={categoryError}
+              formError={formError}
+              isSavingCategory={isSavingCategory}
+              isCreatingCategory={isCreatingCategory}
+              editingCategory={editingCategory}
+              categoryToDelete={categoryToDelete}
+              isDeletingCategory={isDeletingCategory}
+              categoryForm={categoryForm}
+              onStartCreate={startCreateCategory}
+              onCancelEdit={cancelEditCategory}
+              onRequestDelete={requestDeleteCategory}
+              onCancelDelete={cancelDeleteCategory}
+              onConfirmDelete={confirmDeleteCategory}
+              onFormChange={handleCategoryFormChange}
+              onSubmit={handleSubmitCategory}
+              onEditCategory={startEditCategory}
+            />
           )}
         </section>
       </main>
     </div>
+  )
+}
+
+type SidebarProps = {
+  view: View
+  setView: Dispatch<SetStateAction<View>>
+  users: User[]
+  categories: Category[]
+}
+
+function Sidebar({ view, setView, users, categories }: SidebarProps) {
+  return (
+    <aside className="w-56 shrink-0">
+      <nav className="space-y-2 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+        <button
+          type="button"
+          onClick={() => setView('users')}
+          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium ${
+            view === 'users'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'text-slate-700 hover:bg-slate-50'
+          }`}
+        >
+          <span>Пользователи</span>
+          <span className="rounded-full bg-black/10 px-2 py-0.5 text-[11px]">
+            {users.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setView('categories')}
+          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium ${
+            view === 'categories'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'text-slate-700 hover:bg-slate-50'
+          }`}
+        >
+          <span>Рубрики</span>
+          <span className="rounded-full bg-black/10 px-2 py-0.5 text-[11px]">
+            {categories.length}
+          </span>
+        </button>
+      </nav>
+    </aside>
   )
 }
 
