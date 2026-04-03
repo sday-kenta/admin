@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { UsersSection } from './components/UsersSection'
 import { CategoriesSection } from './components/CategoriesSection'
+import { IncidentsSection } from './components/IncidentsSection'
 
 export type User = {
   id: number
@@ -48,7 +49,39 @@ export type CategoryForm = {
   icon_url: string
 }
 
-type View = 'users' | 'categories'
+export type IncidentPhoto = {
+  id: number
+  file_url: string
+  content_type?: string
+  size_bytes: number
+  sort_order: number
+  created_at: string
+}
+
+export type Incident = {
+  id: number
+  user_id: number
+  category_id: number
+  category_title: string
+  title: string
+  description: string
+  status: string
+  department_name?: string
+  city?: string
+  street?: string
+  house?: string
+  address_text: string
+  latitude: number
+  longitude: number
+  photos?: IncidentPhoto[]
+  published_at?: string
+  created_at: string
+  updated_at: string
+}
+
+type View = 'users' | 'categories' | 'incidents'
+
+type IncidentStatusFilter = 'all' | 'draft' | 'published'
 
 const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '')
 
@@ -89,6 +122,51 @@ function App() {
     is_blocked: false,
     role: 'user',
   })
+
+  const [incidents, setIncidents] = useState<Incident[]>([])
+  const [incidentsLoading, setIncidentsLoading] = useState(false)
+  const [incidentsError, setIncidentsError] = useState<string | null>(null)
+  const [incidentStatusFilter, setIncidentStatusFilter] =
+    useState<IncidentStatusFilter>('all')
+  const [incidentToDelete, setIncidentToDelete] = useState<Incident | null>(null)
+  const [isDeletingIncident, setIsDeletingIncident] = useState(false)
+
+  const adminUserId = useMemo(
+    () => users.find((u) => u.role === 'admin')?.id ?? null,
+    [users],
+  )
+
+  const fetchIncidents = useCallback(async () => {
+    try {
+      setIncidentsLoading(true)
+      setIncidentsError(null)
+      const params = new URLSearchParams()
+      if (incidentStatusFilter !== 'all') {
+        params.set('status', incidentStatusFilter)
+      }
+      const qs = params.toString()
+      const url = `${API_URL}/v1/incidents${qs ? `?${qs}` : ''}`
+      const res = await fetch(url, {
+        headers: { 'X-User-Role': 'admin' },
+      })
+      if (!res.ok) {
+        throw new Error(`Ошибка загрузки инцидентов: ${res.status}`)
+      }
+      const data = (await res.json()) as Incident[]
+      setIncidents(data)
+    } catch (err) {
+      setIncidentsError(
+        err instanceof Error ? err.message : 'Не удалось загрузить инциденты',
+      )
+    } finally {
+      setIncidentsLoading(false)
+    }
+  }, [incidentStatusFilter])
+
+  useEffect(() => {
+    if (view !== 'incidents') return
+    void fetchIncidents()
+  }, [view, fetchIncidents])
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -185,6 +263,39 @@ function App() {
       alert(err instanceof Error ? err.message : 'Ошибка удаления рубрики')
     } finally {
       setIsDeletingCategory(false)
+    }
+  }
+
+  const requestDeleteIncident = (incident: Incident) => {
+    setIncidentToDelete(incident)
+  }
+
+  const cancelDeleteIncident = () => {
+    setIncidentToDelete(null)
+    setIsDeletingIncident(false)
+  }
+
+  const confirmDeleteIncident = async () => {
+    if (!incidentToDelete || !adminUserId) return
+
+    try {
+      setIsDeletingIncident(true)
+      const res = await fetch(`${API_URL}/v1/incidents/${incidentToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'X-User-Role': 'admin',
+          'X-User-ID': String(adminUserId),
+        },
+      })
+      if (!res.ok) {
+        throw new Error('Не удалось удалить инцидент')
+      }
+      setIncidents((prev) => prev.filter((i) => i.id !== incidentToDelete.id))
+      setIncidentToDelete(null)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Ошибка удаления')
+    } finally {
+      setIsDeletingIncident(false)
     }
   }
 
@@ -470,17 +581,23 @@ function App() {
               Admin Panel
             </h1>
             <p className="text-sm text-slate-500">
-              Управление пользователями и рубриками
+              Пользователи, рубрики и инциденты
             </p>
           </div>
         </div>
       </header>
 
       <main className="mx-auto flex max-w-6xl gap-6 px-4 py-8">
-        <Sidebar view={view} setView={setView} users={users} categories={categories} />
+        <Sidebar
+          view={view}
+          setView={setView}
+          users={users}
+          categories={categories}
+          incidentsCount={incidents.length}
+        />
 
         <section className="flex-1">
-          {view === 'users' ? (
+          {view === 'users' && (
             <UsersSection
               users={users}
               isLoading={isLoading}
@@ -501,7 +618,8 @@ function App() {
               onFormChange={handleFormChange}
               onSubmit={handleSubmitUser}
             />
-          ) : (
+          )}
+          {view === 'categories' && (
             <CategoriesSection
               categories={categories}
               categoryError={categoryError}
@@ -522,6 +640,22 @@ function App() {
               onEditCategory={startEditCategory}
             />
           )}
+          {view === 'incidents' && (
+            <IncidentsSection
+              incidents={incidents}
+              isLoading={incidentsLoading}
+              error={incidentsError}
+              statusFilter={incidentStatusFilter}
+              onStatusFilterChange={setIncidentStatusFilter}
+              adminUserId={adminUserId}
+              incidentToDelete={incidentToDelete}
+              isDeleting={isDeletingIncident}
+              onRequestDelete={requestDeleteIncident}
+              onCancelDelete={cancelDeleteIncident}
+              onConfirmDelete={confirmDeleteIncident}
+              onRefresh={fetchIncidents}
+            />
+          )}
         </section>
       </main>
     </div>
@@ -533,9 +667,16 @@ type SidebarProps = {
   setView: Dispatch<SetStateAction<View>>
   users: User[]
   categories: Category[]
+  incidentsCount: number
 }
 
-function Sidebar({ view, setView, users, categories }: SidebarProps) {
+function Sidebar({
+  view,
+  setView,
+  users,
+  categories,
+  incidentsCount,
+}: SidebarProps) {
   return (
     <aside className="w-56 shrink-0">
       <nav className="space-y-2 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
@@ -566,6 +707,21 @@ function Sidebar({ view, setView, users, categories }: SidebarProps) {
           <span>Рубрики</span>
           <span className="rounded-full bg-black/10 px-2 py-0.5 text-[11px]">
             {categories.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setView('incidents')}
+          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium ${
+            view === 'incidents'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'text-slate-700 hover:bg-slate-50'
+          }`}
+        >
+          <span>Инциденты</span>
+          <span className="rounded-full bg-black/10 px-2 py-0.5 text-[11px]">
+            {incidentsCount}
           </span>
         </button>
       </nav>

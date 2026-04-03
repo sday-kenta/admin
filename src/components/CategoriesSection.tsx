@@ -1,5 +1,15 @@
+import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Category, CategoryForm } from '../App'
+
+function filterCategoriesBySearch(categories: Category[], query: string): Category[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return categories
+  return categories.filter((cat) => {
+    const blob = [String(cat.id), cat.title, cat.icon_url ?? ''].join(' ').toLowerCase()
+    return blob.includes(q)
+  })
+}
 
 type Props = {
   categories: Category[]
@@ -40,16 +50,30 @@ export function CategoriesSection({
   onSubmit,
   onEditCategory,
 }: Props) {
+  const [search, setSearch] = useState('')
+  const filteredCategories = useMemo(
+    () => filterCategoriesBySearch(categories, search),
+    [categories, search],
+  )
+
   return (
     <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-slate-900">Рубрики</h2>
           <p className="text-xs text-slate-500">
             Управление рубриками/категориями контента
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск по ID, названию, URL иконки…"
+            autoComplete="off"
+            className="h-8 min-w-[200px] max-w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          />
           {categoryError && (
             <span className="text-[11px] text-rose-500">Ошибка: {categoryError}</span>
           )}
@@ -174,7 +198,7 @@ export function CategoriesSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-              {categories.map((category) => (
+              {filteredCategories.map((category) => (
                 <tr key={category.id} className="hover:bg-slate-50/70">
                   <td className="px-3 py-2">{category.id}</td>
                   <td className="px-3 py-2">{category.title}</td>
@@ -217,11 +241,25 @@ export function CategoriesSection({
                   </td>
                 </tr>
               )}
+              {categories.length > 0 && filteredCategories.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-3 py-4 text-center text-xs text-slate-400"
+                  >
+                    Ничего не найдено по запросу
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
         <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-          <span>Всего: {categories.length}</span>
+          <span>
+            {search.trim()
+              ? `Показано: ${filteredCategories.length} из ${categories.length}`
+              : `Всего: ${categories.length}`}
+          </span>
         </div>
       </div>
     </section>

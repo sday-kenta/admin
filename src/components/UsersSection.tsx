@@ -1,5 +1,30 @@
+import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { User, UserForm } from '../App'
+
+function filterUsersBySearch(users: User[], query: string): User[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return users
+  return users.filter((user) => {
+    const blob = [
+      String(user.id),
+      user.login,
+      user.email,
+      user.first_name,
+      user.last_name,
+      user.middle_name,
+      user.phone,
+      user.city,
+      user.street,
+      user.house,
+      user.apartment,
+      user.role,
+    ]
+      .join(' ')
+      .toLowerCase()
+    return blob.includes(q)
+  })
+}
 
 type Props = {
   users: User[]
@@ -42,16 +67,30 @@ export function UsersSection({
   onFormChange,
   onSubmit,
 }: Props) {
+  const [search, setSearch] = useState('')
+  const filteredUsers = useMemo(
+    () => filterUsersBySearch(users, search),
+    [users, search],
+  )
+
   return (
     <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-slate-900">Пользователи</h2>
           <p className="text-xs text-slate-500">
             Список зарегистрированных пользователей системы
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск по ID, логину, email, ФИО, телефону, адресу…"
+            autoComplete="off"
+            className="h-8 min-w-[200px] max-w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          />
           {isLoading && (
             <span className="text-[11px] text-slate-400">Загрузка...</span>
           )}
@@ -287,7 +326,7 @@ export function UsersSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-slate-50/70">
                   <td className="px-3 py-2">{user.id}</td>
                   <td className="px-3 py-2">{user.login}</td>
@@ -343,11 +382,28 @@ export function UsersSection({
                   </td>
                 </tr>
               )}
+              {!isLoading &&
+                users.length > 0 &&
+                filteredUsers.length === 0 &&
+                !error && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-3 py-4 text-center text-xs text-slate-400"
+                    >
+                      Ничего не найдено по запросу
+                    </td>
+                  </tr>
+                )}
             </tbody>
           </table>
         </div>
         <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-          <span>Всего: {users.length}</span>
+          <span>
+            {search.trim()
+              ? `Показано: ${filteredUsers.length} из ${users.length}`
+              : `Всего: ${users.length}`}
+          </span>
         </div>
       </div>
     </section>
