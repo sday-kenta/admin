@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
+import { apiFetch } from './api/client'
+import { useAuth } from './auth/AuthContext'
 import { UsersSection } from './components/UsersSection'
 import { CategoriesSection } from './components/CategoriesSection'
 import { IncidentsSection } from './components/IncidentsSection'
+import { LoginPage } from './components/LoginPage'
 
 export type User = {
   id: number
@@ -83,9 +86,10 @@ type View = 'users' | 'categories' | 'incidents'
 
 type IncidentStatusFilter = 'all' | 'draft' | 'published'
 
-const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '')
+function AdminPanel() {
+  const { session, logout } = useAuth()
+  const adminUserId = session?.userId ?? null
 
-function App() {
   const [view, setView] = useState<View>('users')
   const [users, setUsers] = useState<User[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -131,11 +135,6 @@ function App() {
   const [incidentToDelete, setIncidentToDelete] = useState<Incident | null>(null)
   const [isDeletingIncident, setIsDeletingIncident] = useState(false)
 
-  const adminUserId = useMemo(
-    () => users.find((u) => u.role === 'admin')?.id ?? null,
-    [users],
-  )
-
   const fetchIncidents = useCallback(async () => {
     try {
       setIncidentsLoading(true)
@@ -145,10 +144,8 @@ function App() {
         params.set('status', incidentStatusFilter)
       }
       const qs = params.toString()
-      const url = `${API_URL}/v1/incidents${qs ? `?${qs}` : ''}`
-      const res = await fetch(url, {
-        headers: { 'X-User-Role': 'admin' },
-      })
+      const path = `/v1/incidents${qs ? `?${qs}` : ''}`
+      const res = await apiFetch(path)
       if (!res.ok) {
         throw new Error(`Ошибка загрузки инцидентов: ${res.status}`)
       }
@@ -173,7 +170,7 @@ function App() {
       try {
         setIsLoading(true)
         setError(null)
-        const res = await fetch(`${API_URL}/v1/users`)
+        const res = await apiFetch('/v1/users')
         if (!res.ok) {
           throw new Error(`Ошибка загрузки: ${res.status}`)
         }
@@ -189,7 +186,7 @@ function App() {
     const fetchCategories = async () => {
       try {
         setCategoryError(null)
-        const res = await fetch(`${API_URL}/v1/categories`)
+        const res = await apiFetch('/v1/categories')
         if (!res.ok) {
           throw new Error(`Ошибка загрузки рубрик: ${res.status}`)
         }
@@ -221,7 +218,7 @@ function App() {
 
     try {
       setIsDeleting(true)
-      const res = await fetch(`${API_URL}/v1/users/${userToDelete.id}`, { method: 'DELETE' })
+      const res = await apiFetch(`/v1/users/${userToDelete.id}`, { method: 'DELETE' })
       if (!res.ok) {
         throw new Error('Не удалось удалить пользователя')
       }
@@ -248,11 +245,8 @@ function App() {
 
     try {
       setIsDeletingCategory(true)
-      const res = await fetch(`${API_URL}/v1/categories/${categoryToDelete.id}`, {
+      const res = await apiFetch(`/v1/categories/${categoryToDelete.id}`, {
         method: 'DELETE',
-        headers: {
-          'X-User-Role': 'admin',
-        },
       })
       if (!res.ok) {
         throw new Error('Не удалось удалить рубрику')
@@ -280,12 +274,8 @@ function App() {
 
     try {
       setIsDeletingIncident(true)
-      const res = await fetch(`${API_URL}/v1/incidents/${incidentToDelete.id}`, {
+      const res = await apiFetch(`/v1/incidents/${incidentToDelete.id}`, {
         method: 'DELETE',
-        headers: {
-          'X-User-Role': 'admin',
-          'X-User-ID': String(adminUserId),
-        },
       })
       if (!res.ok) {
         throw new Error('Не удалось удалить инцидент')
@@ -435,7 +425,7 @@ function App() {
       setIsSaving(true)
 
       if (isCreating) {
-        const res = await fetch(`${API_URL}/v1/users`, {
+        const res = await apiFetch('/v1/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -469,7 +459,7 @@ function App() {
         setUsers((prev) => [...prev, created])
         cancelEdit()
       } else if (editingUser) {
-        const res = await fetch(`${API_URL}/v1/users/${editingUser.id}`, {
+        const res = await apiFetch(`/v1/users/${editingUser.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -523,11 +513,10 @@ function App() {
       setIsSavingCategory(true)
 
       if (isCreatingCategory) {
-        const res = await fetch(`${API_URL}/v1/categories`, {
+        const res = await apiFetch('/v1/categories', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-User-Role': 'admin',
           },
           body: JSON.stringify({
             title: categoryForm.title.trim(),
@@ -544,11 +533,10 @@ function App() {
         setCategories((prev) => [...prev, created])
         cancelEditCategory()
       } else if (editingCategory) {
-        const res = await fetch(`${API_URL}/v1/categories/${editingCategory.id}`, {
+        const res = await apiFetch(`/v1/categories/${editingCategory.id}`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
-            'X-User-Role': 'admin',
           },
           body: JSON.stringify({
             title: categoryForm.title.trim(),
@@ -575,7 +563,7 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-100">
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center px-4 py-4">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">
               Admin Panel
@@ -583,6 +571,18 @@ function App() {
             <p className="text-sm text-slate-500">
               Пользователи, рубрики и инциденты
             </p>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-slate-600">
+            <span className="hidden sm:inline">
+              {session?.login}
+            </span>
+            <button
+              type="button"
+              onClick={logout}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Выйти
+            </button>
           </div>
         </div>
       </header>
@@ -660,6 +660,24 @@ function App() {
       </main>
     </div>
   )
+}
+
+function App() {
+  const { session, loading, login } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 text-sm text-slate-500">
+        Загрузка...
+      </div>
+    )
+  }
+
+  if (!session) {
+    return <LoginPage onLogin={login} />
+  }
+
+  return <AdminPanel />
 }
 
 type SidebarProps = {
