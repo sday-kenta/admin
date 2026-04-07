@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Category, CategoryForm } from '../App'
 
@@ -21,12 +21,15 @@ type Props = {
   categoryToDelete: Category | null
   isDeletingCategory: boolean
   categoryForm: CategoryForm
+  categoryIconFile: File | null
   onStartCreate: () => void
   onCancelEdit: () => void
   onRequestDelete: (category: Category) => void
   onCancelDelete: () => void
   onConfirmDelete: () => Promise<void>
   onFormChange: (field: keyof CategoryForm, value: string) => void
+  onIconFileChange: (file: File | null) => void
+  onDeleteIcon: () => Promise<void>
   onSubmit: (event: FormEvent) => Promise<void>
   onEditCategory: (category: Category) => void
 }
@@ -41,20 +44,33 @@ export function CategoriesSection({
   categoryToDelete,
   isDeletingCategory,
   categoryForm,
+  categoryIconFile,
   onStartCreate,
   onCancelEdit,
   onRequestDelete,
   onCancelDelete,
   onConfirmDelete,
   onFormChange,
+  onIconFileChange,
+  onDeleteIcon,
   onSubmit,
   onEditCategory,
 }: Props) {
   const [search, setSearch] = useState('')
+  const [iconPreviewURL, setIconPreviewURL] = useState<string | null>(null)
   const filteredCategories = useMemo(
     () => filterCategoriesBySearch(categories, search),
     [categories, search],
   )
+  useEffect(() => {
+    if (!categoryIconFile) {
+      setIconPreviewURL(null)
+      return
+    }
+    const url = URL.createObjectURL(categoryIconFile)
+    setIconPreviewURL(url)
+    return () => URL.revokeObjectURL(url)
+  }, [categoryIconFile])
 
   return (
     <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
@@ -124,14 +140,38 @@ export function CategoriesSection({
               />
             </label>
             <label className="flex flex-col gap-1 text-[11px] text-slate-600">
-              URL иконки
+              Файл иконки (PNG/JPG)
               <input
-                type="text"
-                value={categoryForm.icon_url}
-                onChange={(e) => onFormChange('icon_url', e.target.value)}
-                className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                type="file"
+                accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                onChange={(e) => onIconFileChange(e.target.files?.[0] ?? null)}
+                className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 file:mr-2 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-[11px]"
               />
             </label>
+            <div className="flex items-end gap-2">
+              {(iconPreviewURL || editingCategory?.icon_url) && (
+                <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-1">
+                  <img
+                    src={iconPreviewURL || editingCategory?.icon_url}
+                    alt="preview"
+                    className="h-8 w-8 rounded object-cover"
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    {iconPreviewURL ? 'Новая иконка' : 'Текущая иконка'}
+                  </span>
+                </div>
+              )}
+              {editingCategory?.icon_url && (
+                <button
+                  type="button"
+                  onClick={() => void onDeleteIcon()}
+                  disabled={isSavingCategory}
+                  className="h-8 rounded-md border border-rose-200 px-3 text-[11px] font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                >
+                  Удалить иконку
+                </button>
+              )}
+            </div>
             <div className="flex items-end gap-2">
               <button
                 type="submit"
@@ -204,9 +244,16 @@ export function CategoriesSection({
                   <td className="px-3 py-2">{category.title}</td>
                   <td className="px-3 py-2 text-slate-500">
                     {category.icon_url ? (
-                      <span className="truncate text-[11px]">
-                        {category.icon_url}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={category.icon_url}
+                          alt={category.title}
+                          className="h-7 w-7 rounded object-cover ring-1 ring-slate-200"
+                        />
+                        <span className="max-w-[180px] truncate text-[11px]">
+                          {category.icon_url}
+                        </span>
+                      </div>
                     ) : (
                       <span className="text-[11px] text-slate-400">—</span>
                     )}

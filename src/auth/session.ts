@@ -4,6 +4,9 @@ export type AuthSession = {
   userId: number
   role: string
   login: string
+  accessToken: string
+  tokenType: string
+  expiresAt: string
 }
 
 export function readSession(): AuthSession | null {
@@ -12,6 +15,7 @@ export function readSession(): AuthSession | null {
     if (!raw) return null
     const s = JSON.parse(raw) as AuthSession
     if (typeof s.userId !== 'number' || !s.role || !s.login) return null
+    if (!s.accessToken || !s.tokenType || !s.expiresAt) return null
     if (s.role !== 'admin') return null
     return s
   } catch {
@@ -31,7 +35,6 @@ export function getAuthHeaders(): Record<string, string> {
   const s = readSession()
   if (!s) return {}
   return {
-    'X-User-ID': String(s.userId),
-    'X-User-Role': s.role,
+    Authorization: `${s.tokenType} ${s.accessToken}`,
   }
 }

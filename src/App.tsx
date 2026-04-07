@@ -49,7 +49,6 @@ export type Category = {
 
 export type CategoryForm = {
   title: string
-  icon_url: string
 }
 
 export type IncidentPhoto = {
@@ -84,11 +83,24 @@ export type Incident = {
 
 type View = 'users' | 'categories' | 'incidents'
 
-type IncidentStatusFilter = 'all' | 'draft' | 'published'
+export type IncidentStatusFilter = 'all' | 'draft' | 'review' | 'published'
+
+export type IncidentCreateForm = {
+  category_id: string
+  title: string
+  description: string
+  status: 'draft' | 'review' | 'published'
+  department_name: string
+  city: string
+  street: string
+  house: string
+  address_text: string
+  latitude: string
+  longitude: string
+}
 
 function AdminPanel() {
   const { session, logout } = useAuth()
-  const adminUserId = session?.userId ?? null
 
   const [view, setView] = useState<View>('users')
   const [users, setUsers] = useState<User[]>([])
@@ -109,8 +121,8 @@ function AdminPanel() {
   const [categoryError, setCategoryError] = useState<string | null>(null)
   const [categoryForm, setCategoryForm] = useState<CategoryForm>({
     title: '',
-    icon_url: '',
   })
+  const [categoryIconFile, setCategoryIconFile] = useState<File | null>(null)
   const [userForm, setUserForm] = useState<UserForm>({
     login: '',
     email: '',
@@ -134,6 +146,30 @@ function AdminPanel() {
     useState<IncidentStatusFilter>('all')
   const [incidentToDelete, setIncidentToDelete] = useState<Incident | null>(null)
   const [isDeletingIncident, setIsDeletingIncident] = useState(false)
+  const [incidentForPhotos, setIncidentForPhotos] = useState<Incident | null>(null)
+  const [incidentPhotoFiles, setIncidentPhotoFiles] = useState<File[]>([])
+  const [incidentPhotosError, setIncidentPhotosError] = useState<string | null>(null)
+  const [isLoadingIncidentPhotos, setIsLoadingIncidentPhotos] = useState(false)
+  const [isUploadingIncidentPhotos, setIsUploadingIncidentPhotos] = useState(false)
+  const [deletingIncidentPhotoID, setDeletingIncidentPhotoID] = useState<number | null>(
+    null,
+  )
+  const [isCreatingIncident, setIsCreatingIncident] = useState(false)
+  const [isSavingIncident, setIsSavingIncident] = useState(false)
+  const [incidentFormError, setIncidentFormError] = useState<string | null>(null)
+  const [incidentForm, setIncidentForm] = useState<IncidentCreateForm>({
+    category_id: '',
+    title: '',
+    description: '',
+    status: 'review',
+    department_name: '',
+    city: '',
+    street: '',
+    house: '',
+    address_text: '',
+    latitude: '',
+    longitude: '',
+  })
 
   const fetchIncidents = useCallback(async () => {
     try {
@@ -270,7 +306,7 @@ function AdminPanel() {
   }
 
   const confirmDeleteIncident = async () => {
-    if (!incidentToDelete || !adminUserId) return
+    if (!incidentToDelete) return
 
     try {
       setIsDeletingIncident(true)
@@ -286,6 +322,208 @@ function AdminPanel() {
       alert(err instanceof Error ? err.message : 'Ошибка удаления')
     } finally {
       setIsDeletingIncident(false)
+    }
+  }
+
+  const fetchIncidentByID = async (id: number): Promise<Incident> => {
+    const res = await apiFetch(`/v1/incidents/${id}`)
+    if (!res.ok) {
+      throw new Error('Не удалось получить данные инцидента')
+    }
+    return (await res.json()) as Incident
+  }
+
+  const updateIncidentInList = (updated: Incident) => {
+    setIncidents((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
+  }
+
+  const openIncidentPhotos = async (incident: Incident) => {
+    try {
+      setIsLoadingIncidentPhotos(true)
+      setIncidentPhotosError(null)
+      const detailed = await fetchIncidentByID(incident.id)
+      setIncidentForPhotos(detailed)
+      updateIncidentInList(detailed)
+    } catch (err) {
+      setIncidentPhotosError(
+        err instanceof Error ? err.message : 'Не удалось загрузить фото инцидента',
+      )
+    } finally {
+      setIsLoadingIncidentPhotos(false)
+    }
+  }
+
+  const closeIncidentPhotos = () => {
+    setIncidentForPhotos(null)
+    setIncidentPhotoFiles([])
+    setIncidentPhotosError(null)
+    setIsLoadingIncidentPhotos(false)
+    setIsUploadingIncidentPhotos(false)
+    setDeletingIncidentPhotoID(null)
+  }
+
+  const handleIncidentPhotoFilesChange = (files: FileList | null) => {
+    setIncidentPhotoFiles(files ? Array.from(files) : [])
+  }
+
+  const uploadIncidentPhotos = async () => {
+    if (!incidentForPhotos) return
+    if (incidentPhotoFiles.length === 0) {
+      setIncidentPhotosError('Выберите хотя бы один файл')
+      return
+    }
+    try {
+      setIsUploadingIncidentPhotos(true)
+      setIncidentPhotosError(null)
+      const formData = new FormData()
+      for (const file of incidentPhotoFiles) {
+        formData.append('photos', file)
+      }
+      const res = await apiFetch(`/v1/incidents/${incidentForPhotos.id}/photos`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) {
+        throw new Error('Не удалось загрузить фото')
+      }
+      const refreshed = await fetchIncidentByID(incidentForPhotos.id)
+      setIncidentForPhotos(refreshed)
+      updateIncidentInList(refreshed)
+      setIncidentPhotoFiles([])
+    } catch (err) {
+      setIncidentPhotosError(
+        err instanceof Error ? err.message : 'Ошибка загрузки фотографий',
+      )
+    } finally {
+      setIsUploadingIncidentPhotos(false)
+    }
+  }
+
+  const deleteIncidentPhoto = async (photoID: number) => {
+    if (!incidentForPhotos) return
+    try {
+      setDeletingIncidentPhotoID(photoID)
+      setIncidentPhotosError(null)
+      const res = await apiFetch(
+        `/v1/incidents/${incidentForPhotos.id}/photos/${photoID}`,
+        { method: 'DELETE' },
+      )
+      if (!res.ok) {
+        throw new Error('Не удалось удалить фото')
+      }
+      const refreshed = await fetchIncidentByID(incidentForPhotos.id)
+      setIncidentForPhotos(refreshed)
+      updateIncidentInList(refreshed)
+    } catch (err) {
+      setIncidentPhotosError(
+        err instanceof Error ? err.message : 'Ошибка удаления фотографии',
+      )
+    } finally {
+      setDeletingIncidentPhotoID(null)
+    }
+  }
+
+  const startCreateIncident = () => {
+    setIsCreatingIncident((prev) => !prev)
+    setIncidentFormError(null)
+    if (isCreatingIncident) return
+    setIncidentForm({
+      category_id: '',
+      title: '',
+      description: '',
+      status: 'review',
+      department_name: '',
+      city: '',
+      street: '',
+      house: '',
+      address_text: '',
+      latitude: '',
+      longitude: '',
+    })
+  }
+
+  const handleIncidentFormChange = (
+    field: keyof IncidentCreateForm,
+    value: string,
+  ) => {
+    setIncidentForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const submitIncidentCreate = async (event: FormEvent) => {
+    event.preventDefault()
+    setIncidentFormError(null)
+
+    if (
+      !incidentForm.category_id.trim() ||
+      !incidentForm.title.trim() ||
+      !incidentForm.description.trim() ||
+      !incidentForm.address_text.trim()
+    ) {
+      setIncidentFormError('Заполните категорию, заголовок, описание и адрес')
+      return
+    }
+
+    const parsedCategoryID = Number(incidentForm.category_id)
+    if (!Number.isInteger(parsedCategoryID) || parsedCategoryID <= 0) {
+      setIncidentFormError('Выберите корректную рубрику')
+      return
+    }
+
+    const payload: Record<string, unknown> = {
+      category_id: parsedCategoryID,
+      title: incidentForm.title.trim(),
+      description: incidentForm.description.trim(),
+      status: incidentForm.status,
+      department_name: incidentForm.department_name.trim() || undefined,
+      city: incidentForm.city.trim() || undefined,
+      street: incidentForm.street.trim() || undefined,
+      house: incidentForm.house.trim() || undefined,
+      address_text: incidentForm.address_text.trim(),
+    }
+
+    if (incidentForm.latitude.trim() || incidentForm.longitude.trim()) {
+      const lat = Number(incidentForm.latitude)
+      const lng = Number(incidentForm.longitude)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        setIncidentFormError('Координаты должны быть числами')
+        return
+      }
+      payload.latitude = lat
+      payload.longitude = lng
+    }
+
+    try {
+      setIsSavingIncident(true)
+      const res = await apiFetch('/v1/incidents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        throw new Error('Не удалось создать инцидент')
+      }
+      const created = (await res.json()) as Incident
+      setIncidents((prev) => [created, ...prev])
+      setIsCreatingIncident(false)
+      setIncidentForm({
+        category_id: '',
+        title: '',
+        description: '',
+        status: 'review',
+        department_name: '',
+        city: '',
+        street: '',
+        house: '',
+        address_text: '',
+        latitude: '',
+        longitude: '',
+      })
+    } catch (err) {
+      setIncidentFormError(
+        err instanceof Error ? err.message : 'Ошибка создания инцидента',
+      )
+    } finally {
+      setIsSavingIncident(false)
     }
   }
 
@@ -374,8 +612,8 @@ function AdminPanel() {
     setFormError(null)
     setCategoryForm({
       title: '',
-      icon_url: '',
     })
+    setCategoryIconFile(null)
   }
 
   const startEditCategory = (category: Category) => {
@@ -384,8 +622,8 @@ function AdminPanel() {
     setFormError(null)
     setCategoryForm({
       title: category.title,
-      icon_url: category.icon_url ?? '',
     })
+    setCategoryIconFile(null)
   }
 
   const cancelEditCategory = () => {
@@ -393,6 +631,7 @@ function AdminPanel() {
     setIsCreatingCategory(false)
     setFormError(null)
     setIsSavingCategory(false)
+    setCategoryIconFile(null)
   }
 
   const handleCategoryFormChange = (field: keyof CategoryForm, value: string) => {
@@ -400,6 +639,42 @@ function AdminPanel() {
       ...prev,
       [field]: value,
     }))
+  }
+
+  const handleCategoryIconFileChange = (file: File | null) => {
+    setCategoryIconFile(file)
+  }
+
+  const uploadCategoryIcon = async (
+    categoryID: number,
+    file: File,
+  ): Promise<Category> => {
+    const formData = new FormData()
+    formData.append('icon', file)
+    const res = await apiFetch(`/v1/categories/${categoryID}/icon`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!res.ok) {
+      throw new Error('Не удалось загрузить иконку рубрики')
+    }
+    const raw = (await res.json()) as Category | { data?: Category }
+    return 'data' in raw && raw.data ? raw.data : (raw as Category)
+  }
+
+  const deleteCategoryIcon = async (categoryID: number): Promise<Category> => {
+    const delRes = await apiFetch(`/v1/categories/${categoryID}/icon`, {
+      method: 'DELETE',
+    })
+    if (!delRes.ok) {
+      throw new Error('Не удалось удалить иконку рубрики')
+    }
+    const getRes = await apiFetch(`/v1/categories/${categoryID}`)
+    if (!getRes.ok) {
+      throw new Error('Не удалось обновить рубрику после удаления иконки')
+    }
+    const raw = (await getRes.json()) as Category | { data?: Category }
+    return 'data' in raw && raw.data ? raw.data : (raw as Category)
   }
 
   const handleSubmitUser = async (event: FormEvent) => {
@@ -520,7 +795,6 @@ function AdminPanel() {
           },
           body: JSON.stringify({
             title: categoryForm.title.trim(),
-            icon_url: categoryForm.icon_url.trim() || undefined,
           }),
         })
 
@@ -530,7 +804,10 @@ function AdminPanel() {
 
         const raw = (await res.json()) as Category | { data?: Category }
         const created = 'data' in raw && raw.data ? raw.data : (raw as Category)
-        setCategories((prev) => [...prev, created])
+        const createdWithIcon = categoryIconFile
+          ? await uploadCategoryIcon(created.id, categoryIconFile)
+          : created
+        setCategories((prev) => [...prev, createdWithIcon])
         cancelEditCategory()
       } else if (editingCategory) {
         const res = await apiFetch(`/v1/categories/${editingCategory.id}`, {
@@ -540,7 +817,6 @@ function AdminPanel() {
           },
           body: JSON.stringify({
             title: categoryForm.title.trim(),
-            icon_url: categoryForm.icon_url.trim() || undefined,
           }),
         })
 
@@ -550,11 +826,32 @@ function AdminPanel() {
 
         const raw = (await res.json()) as Category | { data?: Category }
         const updated = 'data' in raw && raw.data ? raw.data : (raw as Category)
-        setCategories((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+        const updatedWithIcon = categoryIconFile
+          ? await uploadCategoryIcon(updated.id, categoryIconFile)
+          : updated
+        setCategories((prev) =>
+          prev.map((c) => (c.id === updatedWithIcon.id ? updatedWithIcon : c)),
+        )
         cancelEditCategory()
       }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Ошибка сохранения рубрики')
+    } finally {
+      setIsSavingCategory(false)
+    }
+  }
+
+  const handleDeleteCategoryIcon = async () => {
+    if (!editingCategory) return
+    setFormError(null)
+    try {
+      setIsSavingCategory(true)
+      const updated = await deleteCategoryIcon(editingCategory.id)
+      setCategories((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      setEditingCategory(updated)
+      setCategoryIconFile(null)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Ошибка удаления иконки')
     } finally {
       setIsSavingCategory(false)
     }
@@ -630,12 +927,15 @@ function AdminPanel() {
               categoryToDelete={categoryToDelete}
               isDeletingCategory={isDeletingCategory}
               categoryForm={categoryForm}
+              categoryIconFile={categoryIconFile}
               onStartCreate={startCreateCategory}
               onCancelEdit={cancelEditCategory}
               onRequestDelete={requestDeleteCategory}
               onCancelDelete={cancelDeleteCategory}
               onConfirmDelete={confirmDeleteCategory}
               onFormChange={handleCategoryFormChange}
+              onIconFileChange={handleCategoryIconFileChange}
+              onDeleteIcon={handleDeleteCategoryIcon}
               onSubmit={handleSubmitCategory}
               onEditCategory={startEditCategory}
             />
@@ -643,16 +943,34 @@ function AdminPanel() {
           {view === 'incidents' && (
             <IncidentsSection
               incidents={incidents}
+              categories={categories}
               isLoading={incidentsLoading}
               error={incidentsError}
+              formError={incidentFormError}
+              isCreating={isCreatingIncident}
+              isSaving={isSavingIncident}
+              incidentForm={incidentForm}
               statusFilter={incidentStatusFilter}
               onStatusFilterChange={setIncidentStatusFilter}
-              adminUserId={adminUserId}
+              onStartCreate={startCreateIncident}
+              onFormChange={handleIncidentFormChange}
+              onSubmitCreate={submitIncidentCreate}
               incidentToDelete={incidentToDelete}
               isDeleting={isDeletingIncident}
+              incidentForPhotos={incidentForPhotos}
+              incidentPhotosError={incidentPhotosError}
+              incidentPhotoFiles={incidentPhotoFiles}
+              isLoadingIncidentPhotos={isLoadingIncidentPhotos}
+              isUploadingIncidentPhotos={isUploadingIncidentPhotos}
+              deletingIncidentPhotoID={deletingIncidentPhotoID}
               onRequestDelete={requestDeleteIncident}
               onCancelDelete={cancelDeleteIncident}
               onConfirmDelete={confirmDeleteIncident}
+              onOpenPhotos={openIncidentPhotos}
+              onClosePhotos={closeIncidentPhotos}
+              onPhotoFilesChange={handleIncidentPhotoFilesChange}
+              onUploadPhotos={uploadIncidentPhotos}
+              onDeletePhoto={deleteIncidentPhoto}
               onRefresh={fetchIncidents}
             />
           )}
