@@ -9,7 +9,6 @@ type Props = {
   error: string | null
   statusFilter: StatusFilter
   onStatusFilterChange: (v: StatusFilter) => void
-  adminUserId: number | null
   incidentToDelete: Incident | null
   isDeleting: boolean
   onRequestDelete: (incident: Incident) => void
@@ -59,7 +58,6 @@ export function IncidentsSection({
   error,
   statusFilter,
   onStatusFilterChange,
-  adminUserId,
   incidentToDelete,
   isDeleting,
   onRequestDelete,
@@ -114,13 +112,6 @@ export function IncidentsSection({
         </div>
       </div>
 
-      {!adminUserId && (
-        <p className="mb-4 rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2 text-[11px] text-amber-900">
-          В списке пользователей нет администратора — для удаления инцидентов API ожидает заголовки X-User-ID и
-          X-User-Role для учётной записи с ролью admin.
-        </p>
-      )}
-
       {isLoading && (
         <p className="mb-4 text-[11px] text-slate-400">Загрузка...</p>
       )}
@@ -149,7 +140,7 @@ export function IncidentsSection({
             <button
               type="button"
               onClick={onConfirmDelete}
-              disabled={isDeleting || !adminUserId}
+              disabled={isDeleting}
               className="inline-flex h-7 items-center justify-center rounded-md bg-rose-600 px-3 text-[11px] font-medium text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isDeleting ? 'Удаление...' : 'Да, удалить'}
@@ -219,8 +210,7 @@ export function IncidentsSection({
                     <button
                       type="button"
                       onClick={() => onRequestDelete(inc)}
-                      disabled={!adminUserId}
-                      className="rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50"
                     >
                       Удалить
                     </button>

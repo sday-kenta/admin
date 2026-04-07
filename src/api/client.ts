@@ -2,7 +2,7 @@ import { API_URL } from '../config'
 import { getAuthHeaders } from '../auth/session'
 
 /**
- * Запрос к API с подстановкой X-User-ID / X-User-Role из сохранённой сессии.
+ * Запрос к API с подстановкой Authorization: Bearer <token> из сессии.
  * Путь вида `/v1/users` (без базового URL).
  */
 export function apiFetch(path: string, init?: RequestInit): Promise<Response> {

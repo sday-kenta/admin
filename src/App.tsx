@@ -88,7 +88,6 @@ type IncidentStatusFilter = 'all' | 'draft' | 'published'
 
 function AdminPanel() {
   const { session, logout } = useAuth()
-  const adminUserId = session?.userId ?? null
 
   const [view, setView] = useState<View>('users')
   const [users, setUsers] = useState<User[]>([])
@@ -270,7 +269,7 @@ function AdminPanel() {
   }
 
   const confirmDeleteIncident = async () => {
-    if (!incidentToDelete || !adminUserId) return
+    if (!incidentToDelete) return
 
     try {
       setIsDeletingIncident(true)
@@ -647,7 +646,6 @@ function AdminPanel() {
               error={incidentsError}
               statusFilter={incidentStatusFilter}
               onStatusFilterChange={setIncidentStatusFilter}
-              adminUserId={adminUserId}
               incidentToDelete={incidentToDelete}
               isDeleting={isDeletingIncident}
               onRequestDelete={requestDeleteIncident}
