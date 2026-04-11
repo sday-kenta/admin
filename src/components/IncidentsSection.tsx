@@ -29,10 +29,12 @@ type Props = {
   incidentPhotoFiles: File[]
   isLoadingIncidentPhotos: boolean
   isUploadingIncidentPhotos: boolean
+  publishingIncidentID: number | null
   deletingIncidentPhotoID: number | null
   onRequestDelete: (incident: Incident) => void
   onCancelDelete: () => void
   onConfirmDelete: () => Promise<void>
+  onPublishIncident: (incident: Incident) => Promise<void>
   onOpenPhotos: (incident: Incident) => Promise<void>
   onClosePhotos: () => void
   onPhotoFilesChange: (files: FileList | null) => void
@@ -99,10 +101,12 @@ export function IncidentsSection({
   incidentPhotoFiles,
   isLoadingIncidentPhotos,
   isUploadingIncidentPhotos,
+  publishingIncidentID,
   deletingIncidentPhotoID,
   onRequestDelete,
   onCancelDelete,
   onConfirmDelete,
+  onPublishIncident,
   onOpenPhotos,
   onClosePhotos,
   onPhotoFilesChange,
@@ -465,6 +469,18 @@ export function IncidentsSection({
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="flex justify-end gap-1">
+                      {inc.status === 'review' && (
+                        <button
+                          type="button"
+                          onClick={() => void onPublishIncident(inc)}
+                          disabled={publishingIncidentID === inc.id}
+                          className="rounded-md px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+                        >
+                          {publishingIncidentID === inc.id
+                            ? 'Публикация...'
+                            : 'Опубликовать'}
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => void onOpenPhotos(inc)}

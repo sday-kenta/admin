@@ -151,6 +151,9 @@ function AdminPanel() {
   const [incidentPhotosError, setIncidentPhotosError] = useState<string | null>(null)
   const [isLoadingIncidentPhotos, setIsLoadingIncidentPhotos] = useState(false)
   const [isUploadingIncidentPhotos, setIsUploadingIncidentPhotos] = useState(false)
+  const [publishingIncidentID, setPublishingIncidentID] = useState<number | null>(
+    null,
+  )
   const [deletingIncidentPhotoID, setDeletingIncidentPhotoID] = useState<number | null>(
     null,
   )
@@ -334,7 +337,13 @@ function AdminPanel() {
   }
 
   const updateIncidentInList = (updated: Incident) => {
-    setIncidents((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
+    setIncidents((prev) => {
+      if (incidentStatusFilter !== 'all' && updated.status !== incidentStatusFilter) {
+        return prev.filter((item) => item.id !== updated.id)
+      }
+      return prev.map((item) => (item.id === updated.id ? updated : item))
+    })
+    setIncidentForPhotos((prev) => (prev?.id === updated.id ? updated : prev))
   }
 
   const openIncidentPhotos = async (incident: Incident) => {
@@ -420,6 +429,37 @@ function AdminPanel() {
       )
     } finally {
       setDeletingIncidentPhotoID(null)
+    }
+  }
+
+  const publishIncident = async (incident: Incident) => {
+    try {
+      setPublishingIncidentID(incident.id)
+      const res = await apiFetch(`/v1/incidents/${incident.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'published' }),
+      })
+      if (!res.ok) {
+        let message = 'Не удалось опубликовать инцидент'
+        try {
+          const data = (await res.json()) as { message?: string }
+          if (data.message) {
+            message = data.message
+          }
+        } catch {
+          // Ignore response parsing errors and show fallback text.
+        }
+        throw new Error(message)
+      }
+      const updated = (await res.json()) as Incident
+      updateIncidentInList(updated)
+    } catch (err) {
+      alert(
+        err instanceof Error ? err.message : 'Ошибка публикации инцидента',
+      )
+    } finally {
+      setPublishingIncidentID(null)
     }
   }
 
@@ -962,10 +1002,12 @@ function AdminPanel() {
               incidentPhotoFiles={incidentPhotoFiles}
               isLoadingIncidentPhotos={isLoadingIncidentPhotos}
               isUploadingIncidentPhotos={isUploadingIncidentPhotos}
+              publishingIncidentID={publishingIncidentID}
               deletingIncidentPhotoID={deletingIncidentPhotoID}
               onRequestDelete={requestDeleteIncident}
               onCancelDelete={cancelDeleteIncident}
               onConfirmDelete={confirmDeleteIncident}
+              onPublishIncident={publishIncident}
               onOpenPhotos={openIncidentPhotos}
               onClosePhotos={closeIncidentPhotos}
               onPhotoFilesChange={handleIncidentPhotoFilesChange}
